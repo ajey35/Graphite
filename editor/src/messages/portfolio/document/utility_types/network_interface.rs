@@ -73,10 +73,8 @@ impl NodeNetworkInterface {
 					fix_network(network);
 				}
 				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
-					if protonode.name.contains("PathModifyNode") {
-						if node.inputs.len() < 3 {
-							node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
-						}
+					if protonode.name.contains("PathModifyNode") && node.inputs.len() < 3 {
+						node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
 					}
 				}
 			}
@@ -460,13 +458,9 @@ impl NodeNetworkInterface {
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
 	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
 		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
-			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
+			if let &mut NodeInput::Node { node_id: id, output_index } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
-					*input = NodeInput::Node {
-						node_id: new_id,
-						output_index,
-						lambda,
-					};
+					*input = NodeInput::Node { node_id: new_id, output_index };
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
 					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
@@ -821,7 +815,7 @@ impl NodeNetworkInterface {
 								data_type,
 								name,
 								description,
-								resolved_type: format!("{:?}", input_type),
+								resolved_type: format!("{input_type:?}"),
 								connected_to,
 							},
 							click_target,
@@ -1069,7 +1063,7 @@ impl NodeNetworkInterface {
 
 	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&Option<String>> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get reference for node: {:?}", node_id);
+			log::error!("Could not get reference for node: {node_id:?}");
 			return None;
 		};
 		Some(&node_metadata.persistent_metadata.reference)
@@ -2522,7 +2516,7 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => {
 				let input_metadata = self.transient_input_metadata(node_id, *input_index, network_path)?;
 				let TransientMetadata::Loaded(wire) = &input_metadata.wire else {
-					log::error!("Could not load wire for input: {:?}", input);
+					log::error!("Could not load wire for input: {input:?}");
 					return None;
 				};
 				wire.clone()
@@ -2530,7 +2524,7 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				let network_metadata = self.network_metadata(network_path)?;
 				let Some(TransientMetadata::Loaded(wire)) = network_metadata.transient_metadata.wires.get(*export_index) else {
-					log::error!("Could not load wire for input: {:?}", input);
+					log::error!("Could not load wire for input: {input:?}");
 					return None;
 				};
 				wire.clone()
@@ -2701,12 +2695,12 @@ impl NodeNetworkInterface {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get dom rect for wire end in root node: {:?}", input);
+			log::error!("Could not get dom rect for wire end in root node: {input:?}");
 			return None;
 		};
 		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get dom rect for wire start in root node: {:?}", upstream_output);
+			log::error!("Could not get dom rect for wire start in root node: {upstream_output:?}");
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
@@ -2733,7 +2727,7 @@ impl NodeNetworkInterface {
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
 	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
-			log::error!("Could not get dom rect for wire end: {:?}", input);
+			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
@@ -2741,7 +2735,7 @@ impl NodeNetworkInterface {
 			return Some((BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
+			log::error!("Could not get dom rect for wire start: {upstream_output:?}");
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
@@ -3357,7 +3351,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]))
+			.filter(|node| self.is_layer(node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
@@ -3366,7 +3360,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]) && !self.is_locked(&node, &[]))
+			.filter(|node| self.is_layer(node, &[]) && !self.is_locked(node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
@@ -4138,7 +4132,7 @@ impl NodeNetworkInterface {
 		if let DocumentNodeImplementation::Network(network) = &node.implementation {
 			let number_of_exports = network.exports.len();
 			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-				log::error!("Could not get metadata for node: {:?}", node_id);
+				log::error!("Could not get metadata for node: {node_id:?}");
 				return;
 			};
 			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
