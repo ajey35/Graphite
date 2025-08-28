@@ -25,6 +25,7 @@ use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Deref;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -541,12 +542,11 @@ impl NodeNetworkInterface {
 				}
 			}
 			DocumentNodeImplementation::ProtoNode(_) => {
-				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
-				let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
+				// Offset the input index by 1 since the proto node also includes the type of the input passed as a call argument.
 				self.resolved_types
 					.types
 					.get(node_id_path.as_slice())
-					.and_then(|node_types| node_types.inputs.get(input_index + manual_composition_offset).cloned())
+					.and_then(|node_types| node_types.inputs.get(input_index + 1).cloned())
 					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
@@ -575,7 +575,7 @@ impl NodeNetworkInterface {
 					return (concrete!(()), TypeSource::Error("could not resolve protonode"));
 				};
 
-				let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
+				let skip_footprint = 1;
 
 				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
 					log::error!("Could not get type");
@@ -1281,7 +1281,7 @@ impl NodeNetworkInterface {
 						let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
-							if tagged_value.clone().into_inner() == TaggedValue::Bool(true) {
+							if tagged_value.clone().deref() == &TaggedValue::Bool(true) {
 								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
@@ -1493,7 +1493,7 @@ impl NodeNetworkInterface {
 				let mut node_metadata = DocumentNodeMetadata::default();
 
 				node.inputs = old_node.inputs;
-				node.manual_composition = old_node.manual_composition;
+				node.call_argument = old_node.manual_composition.unwrap();
 				node.visible = old_node.visible;
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
@@ -4149,7 +4149,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+	pub fn set_call_argument(&mut self, node_id: &NodeId, network_path: &[NodeId], call_argument: Type) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
 			return;
@@ -4158,7 +4158,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in set_implementation");
 			return;
 		};
-		node.manual_composition = manual_composition;
+		node.call_argument = call_argument;
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
