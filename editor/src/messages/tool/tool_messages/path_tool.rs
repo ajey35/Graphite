@@ -2611,17 +2611,15 @@ impl Fsm for PathToolFsmState {
 			// Delete key
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
-				responses.add(DocumentMessage::AddTransaction);
 				let point_mode = tool_options.path_editing_mode.point_editing_mode;
 				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
-
 				let only_segment_mode = segment_mode && !point_mode;
 
-				shape_editor.delete_selected_segments(document, responses);
+				let transaction_started = shape_editor.delete_selected_segments(document, responses, true);
 				if only_segment_mode {
-					shape_editor.delete_hanging_selected_anchors(document, responses);
+					shape_editor.delete_hanging_selected_anchors(document, responses, !transaction_started);
 				} else {
-					shape_editor.delete_selected_points(document, responses);
+					shape_editor.delete_selected_points(document, responses, !transaction_started);
 				}
 				responses.add(PathToolMessage::SelectionChanged);
 
@@ -2789,7 +2787,7 @@ impl Fsm for PathToolFsmState {
 							segments_map.insert(segment_id, new_segment_id);
 
 							let points = pathseg_points(bezier);
-							let handles = [points.p1, points.p2];
+							let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
 
 							let points = [points_map[&start], points_map[&end]];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
@@ -2841,8 +2839,8 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DeleteSelected) => {
 				// Delete the selected points and segments
-				shape_editor.delete_point_and_break_path(document, responses);
-				shape_editor.delete_selected_segments(document, responses);
+				let deleted_some_point = shape_editor.delete_point_and_break_path(document, responses);
+				shape_editor.delete_selected_segments(document, responses, !deleted_some_point);
 
 				PathToolFsmState::Ready
 			}
@@ -2895,7 +2893,7 @@ impl Fsm for PathToolFsmState {
 							segments_map.insert(segment_id, new_id);
 
 							let points = pathseg_points(bezier);
-							let handles = [points.p1, points.p2];
+							let handles = [points.p1.map(|handle| handle - points.p0), points.p2.map(|handle| handle - points.p3)];
 
 							let points = [points_map[&start], points_map[&end]];
 							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };
@@ -3101,7 +3099,7 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
-				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&document.network_interface, document.metadata()).is_some();
+				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				self
 			}

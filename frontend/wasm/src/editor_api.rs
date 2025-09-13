@@ -314,6 +314,30 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = addPrimaryImport)]
+	pub fn add_primary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryImport)]
+	pub fn add_secondary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addPrimaryExport)]
+	pub fn add_primary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryExport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryExport)]
+	pub fn add_secondary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
 	/// Toggles minimizing or restoring down the application window
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
@@ -391,6 +415,11 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: String) {
+		let Ok(preferences) = serde_json::from_str(&preferences) else {
+			log::error!("Failed to deserialize preferences");
+			return;
+		};
+
 		let message = PreferencesMessage::Load { preferences };
 
 		self.dispatch(message);
@@ -442,6 +471,7 @@ impl EditorHandle {
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}
